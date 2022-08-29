@@ -1,0 +1,50 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+RWStructuredBuffer<float3> Collisions;
+float numCollisions;
+float2 centre;
+float scale;
+int numPixels;
+
+bool IsInCollisions(float2 thing)
+{
+	for (int i = 0; i < numCollisions; i++)
+	{
+		if (thing == floor(Collisions[i].xz))
+		{
+			return true;
+		}
+		
+
+	}
+	return false;
+}
+
+float2 PixelToLoc(float2 pixel)
+{
+	float2 loc = pixel;
+	loc -= numPixels / 2;
+	loc *= scale;
+	loc -= centre;
+	return loc;
+}
+
+[numthreads(8,8,1)]
+
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    // TODO: insert actual code here!
+	if (IsInCollisions(PixelToLoc(id.xy)))
+	{
+		Result[id.xy] = float4(1, 1, 1, 0);
+
+	}
+	else
+	{
+		Result[id.xy] = float4(0, 0, 1, 0.0);
+	}
+}

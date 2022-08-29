@@ -1,0 +1,115 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#pragma kernel SubtractValues
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+Texture2D<float4> ImageTexture;
+RWStructuredBuffer<float4> reds;
+float speed;
+float decreaseValue;
+float turnMultiplier;
+bool useImage;
+
+float rand_1_05(in float2 uv)
+{
+    float2 noise = (frac(sin(dot(uv, float2(12.9898, 78.233) * 2.0)) * 43758.5453));
+    return abs(noise.x + noise.y) * 0.5;
+}
+
+
+float2 Bounce(float2 velocity, float2 location, int size)
+{
+    if (floor(location[0]) >= size || floor(location[0]) <= 3)
+	{
+		return float2(-velocity[0], velocity[1]);
+	}
+    if (floor(location[1] >= size) || floor(location[1]) <= 3)
+	{
+		return float2(velocity[0], -velocity[1]);
+
+	}
+	return velocity;
+}
+float2 ceilToMagnitude(float2 input, float2 velocity)
+{
+    float2 output = input;
+    if (velocity.x < 0)
+    {
+        output.x = floor(input.x);
+    }
+    else
+    {
+        output.x = ceil(input.x);
+    }
+    if (velocity.y < 0)
+    {
+        output.y = floor(input.y);
+    }
+    else
+    {
+        output.y = ceil(input.y);
+    }
+    return output;
+}
+float2 Turn(float2 location, float2 velocity, float2 id)
+{
+    float2 rightVelocity = 3 * float2(velocity[0] - velocity[1], velocity[0] + velocity[1]);
+    float2 leftVelocity = 3 * float2(velocity[0] + velocity[1], - velocity[0] + velocity[1]);
+    float leftValue = 0.5;
+    float rightValue = 0.5;
+    if (useImage)
+    {
+        leftValue = min(ImageTexture[ceilToMagnitude(location + leftVelocity, velocity)].x+0.4, Result[ceilToMagnitude(location + leftVelocity, velocity)].x);
+        rightValue = min(ImageTexture[ceilToMagnitude(location + rightVelocity, velocity)].x+0.4, Result[ceilToMagnitude(location + rightVelocity, velocity)].x);
+    }
+    else
+    {
+        leftValue = Result[ceilToMagnitude(location + leftVelocity, velocity)].x;
+        rightValue = Result[ceilToMagnitude(location + rightVelocity, velocity)].x;
+    }
+        
+    
+    float turner = (rightValue - leftValue + 0.1 * (0.5 - rand_1_05(id))) * turnMultiplier;
+    float sinturn = sin(turner);
+    float costurn = cos(turner);
+    return float2(costurn * velocity[0] - sinturn * velocity[1], sinturn * velocity[0] + costurn * velocity[1]);
+
+}
+[numthreads(128,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	int width = 2048;
+	float index = id.x;
+	
+    //float speed = 10;
+	float turnInfluencer = 10;
+	float2 newVelocity = Bounce(float2(reds[index][2], reds[index][3]), float2(reds[index][0], reds[index][1]), width);
+	float4 newThing = float4(0, 0, 0, 0);
+	//Result[float2(round(reds[index][0]), round(reds[index][1]))] = float4(0, 0, 0, 0);
+	newThing[0] = reds[index][0] + (newVelocity[0] * speed);
+	newThing[1] = reds[index][1] + (newVelocity[1] * speed);
+    Result[float2(round(newThing[0]), round(newThing[1]))] = float4(1, 0, 0.8, 42);
+
+	//newVelocity[0] += (1 - (0.5 * rand_1_05(id.xy))) * turnInfluencer;
+	//newVelocity[1] += (1 - (0.5 * rand_1_05(id.xy * 1.5))) * turnInfluencer;
+	newVelocity = normalize(newVelocity);
+    newVelocity = Turn(newThing.xy, newVelocity, id.xy);
+	newThing[2] = newVelocity[0];
+	newThing[3] = newVelocity[1];
+	reds[index] = newThing;
+
+}
+float4 averageValue(float2 xy)
+{
+    return max(Result[xy], (Result[xy] + Result[xy + float2(1, 0)] + Result[xy + float2(1, 1)] + Result[xy + float2(0, 1)] + Result[xy + float2(-1, 0)] + Result[xy + float2(-1, -1)] + Result[xy + float2(0, -1)]) / 7.0);
+
+}
+[numthreads(32,32,1)]
+void SubtractValues(uint3 id : SV_DispatchThreadID)
+{
+    Result[id.xy] = averageValue(id.xy);
+    Result[id.xy] = max(0, Result[id.xy] - decreaseValue);
+    //Result[id.xy] = float4(1, 0, 0, 0);
+
+}
